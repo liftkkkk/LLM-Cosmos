@@ -1,0 +1,6 @@
+openai
+pydantic
+networkx
+streamlit
+pyvis
+instructor
