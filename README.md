@@ -88,7 +88,4 @@ python -m streamlit run viz/app.py
 - `knowledge_graph.json`：NetworkX Node-Link 格式的图数据
 - `similarity_scores.json`：每个扩展节点相对种子概念的相似度记录
 
-## 已知问题
-
-- [viz/app.py](file:///c:/Users/z1881/Downloads/in-llm/llm_cosmos/viz/app.py) 引用了 `llm_cosmos.core.graph_engine.GraphEngine`，但当前仓库中未包含对应实现文件，因此直接运行可能会报 `ModuleNotFoundError`。如果你希望我补齐该模块实现并保证应用可跑通，可以继续告诉我你的预期功能（最小版：只负责维护 NetworkX 有向图、去重、统计与清空）。
 
