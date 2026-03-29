@@ -10,8 +10,8 @@ import math
 # Add project root to path to ensure imports work
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
-from llm_cosmos.core.extractor import SemanticExtractor
-from llm_cosmos.core.graph_engine import GraphEngine
+from core.extractor import SemanticExtractor
+from core.graph_engine import GraphEngine
 
 def cosine_similarity(v1, v2):
     if not v1 or not v2: return 0.0
@@ -28,15 +28,14 @@ st.title("🌌 LLM-Cosmos: Knowledge Graph Explorer")
 # Sidebar settings
 with st.sidebar:
     st.header("Settings")
-    model_name = st.text_input("Model Name", value="gemma3:1b")
-    base_url = st.text_input("Base URL", value="http://localhost:11434/v1")
-    embedding_model = st.text_input("Embedding Model", value="qwen3-embedding:0.6b")
+    model_name = st.text_input("Model Name", value="qwen3-max")
+    base_url = st.text_input("Base URL", value="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    embedding_model = st.text_input("Embedding Model", value="text-embedding-v4")
     similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, 0.4)
     depth = st.slider("Recursion Depth", 1, 10, 4)
     max_concepts = st.slider("Max Concepts per Node", 1, 10, 5)
     max_width = st.slider("Max Width per Layer", 5, 50, 10)
     temperature = st.slider("Temperature (Creativity)", 0.0, 1.0, 0.3)
-    
     if st.button("Clear Graph"):
         if "graph_engine" in st.session_state:
             st.session_state.graph_engine.clear()
@@ -55,6 +54,8 @@ with col2:
     st.write("") # Spacer
     st.write("")
     if st.button("🚀 Explore Cosmos", type="primary"):
+        # Start a fresh exploration each time
+        st.session_state.graph_engine.clear()
         st.session_state.current_seed = seed_concept
         extractor = SemanticExtractor(model_name=model_name, base_url=base_url, temperature=temperature)
         
@@ -76,8 +77,6 @@ with col2:
         # Breadth-first search style expansion
         current_layer = [seed_concept]
         visited = set()
-        
-        total_steps = depth
         
         # BFS Traversal
         for d in range(depth):
@@ -105,30 +104,41 @@ with col2:
                 try:
                     kg = extractor.extract_related_concepts(topic, max_concepts=max_concepts)
                     st.session_state.graph_engine.add_knowledge(kg)
-                    
+                    # print(kg.triples)
                     # Collect objects for next layer
                     for triple in kg.triples:
-                        if triple.object not in visited:
+                        if triple.subject not in visited:
                             # Calculate similarity to prune unrelated concepts
                             if triple.object in embedding_cache:
                                 obj_embedding = embedding_cache[triple.object]
                             else:
                                 obj_embedding = extractor.get_embedding(triple.object, model=embedding_model)
                                 embedding_cache[triple.object] = obj_embedding
+
+                            if triple.subject in embedding_cache:
+                                sub_embedding = embedding_cache[triple.subject]
+                            else:
+                                sub_embedding = extractor.get_embedding(triple.subject, model=embedding_model)
+                                embedding_cache[triple.subject] = sub_embedding
                             
-                            sim = cosine_similarity(root_embedding, obj_embedding)
+                            sim1 = cosine_similarity(root_embedding, obj_embedding)
+                            sim2 = cosine_similarity(root_embedding, sub_embedding)
                             
                             # Record similarity
                             st.session_state.similarity_data.append({
                                 "node": triple.object,
-                                "similarity": sim
+                                "similarity": sim1
                             })
-                            
+                            st.session_state.similarity_data.append({
+                                "node": triple.subject,
+                                "similarity": sim2
+                            })
+                            sim = min(sim1, sim2)
                             if sim >= similarity_threshold:
-                                next_layer.append(triple.object)
+                                next_layer.append(triple.subject)
                             else:
                                 # Optional: log or visualize pruned nodes
-                                print(f"Pruned '{triple.object}' (similarity: {sim:.2f} < {similarity_threshold})")
+                                print(f"Pruned '{triple.subject}' (similarity: {sim:.2f} < {similarity_threshold})")
                 except Exception as e:
                     st.error(f"Error processing {topic}: {e}")
             

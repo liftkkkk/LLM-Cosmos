@@ -1,9 +1,9 @@
 from openai import OpenAI
 import instructor
-from llm_cosmos.schema.models import KnowledgeGraph
+from schema.models import KnowledgeGraph
 import os
-class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1
-    def __init__(self, model_name: str = "llama3", base_url: str = "http://localhost:11434/v1", temperature: float = 0.3):
+class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1; text-embedding-v4; qwen3-max
+    def __init__(self, model_name: str = "qwen3-max", base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1", temperature: float = 0.3):
         self.model_name = model_name
         self.temperature = temperature
         # Initialize OpenAI client pointing to Ollama
@@ -20,11 +20,17 @@ class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1
         Extracts direct relationships and sub-concepts for a given topic.
         """
         prompt = f"""
-        You are a knowledge graph extractor.
-        Analyze the concept "{topic}" deeply.
-        Identify the top {max_concepts} most important relationships or sub-concepts related to "{topic}".
-        Return them as a set of Subject -> Relation -> Object triples.
-        Ensure 'subject' is usually "{topic}" or a closely related concept.
+        You are an enterprise ontology designer.
+        Treat "{topic}" as the current root class (concept) in an enterprise ontology.
+        Your ONLY task is to list its first-level subclasses (direct child classes) in key business sub-areas.
+        Every triple MUST represent a pure "X is a {topic}" subclass-of relationship that can be written strictly as "X is a kind of {topic}".
+        For every triple you output:
+        - Subject: a direct subclass of "{topic}" (a more specific class).
+        - Relation: exactly the string "is_a" (lowercase, with underscore).
+        - Object: exactly "{topic}".
+        Do NOT output any other relation phrases or types (such as "depends on", "related to", "part of", "is a type of", "includes examples such as", etc.).
+        If a candidate relationship cannot be expressed as a strict is-a (subclass-of) relation to "{topic}", omit it.
+        Return ONLY ontology edges as Subject -> Relation -> Object triples that satisfy these rules.
         """
         
         try:
@@ -45,7 +51,7 @@ class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1
             print(f"Error extracting concepts for {topic}: {e}")
             return KnowledgeGraph(triples=[])
 
-    def get_embedding(self, text: str, model: str = "qwen3-embedding:0.6b") -> list[float]:
+    def get_embedding(self, text: str, model: str = "text-embedding-v4") -> list[float]:
         """
         Get embedding for a given text using Ollama.
         """
