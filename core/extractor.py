@@ -6,6 +6,8 @@ class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1; te
     def __init__(self, model_name: str = "qwen3-max", base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1", temperature: float = 0.3):
         self.model_name = model_name
         self.temperature = temperature
+        self._embedding_cache: dict[tuple[str, str], list[float]] = {}
+        self._kg_cache: dict[tuple[str, int], KnowledgeGraph] = {}
         # Initialize OpenAI client pointing to Ollama
         self.client = instructor.from_openai(
             OpenAI(
@@ -19,6 +21,9 @@ class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1; te
         """
         Extracts direct relationships and sub-concepts for a given topic.
         """
+        cache_key = (topic, max_concepts)
+        if cache_key in self._kg_cache:
+            return self._kg_cache[cache_key]
         prompt = f"""
         You are an enterprise ontology designer.
         Treat "{topic}" as the current root class (concept) in an enterprise ontology.
@@ -30,6 +35,9 @@ class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1; te
         - Object: exactly "{topic}".
         Do NOT output any other relation phrases or types (such as "depends on", "related to", "part of", "is a type of", "includes examples such as", etc.).
         If a candidate relationship cannot be expressed as a strict is-a (subclass-of) relation to "{topic}", omit it.
+        For each triple, also provide:
+        - description: a one-sentence rationale for why Subject is a strict subclass of "{topic}".
+        - confidence: a number from 0.0 to 1.0 indicating how certain you are the triple satisfies the strict is-a constraint.
         Return ONLY ontology edges as Subject -> Relation -> Object triples that satisfy these rules.
         """
         
@@ -46,22 +54,31 @@ class SemanticExtractor: # https://dashscope.aliyuncs.com/compatible-mode/v1; te
             # Programmatically enforce the limit
             if resp.triples and len(resp.triples) > max_concepts:
                 resp.triples = resp.triples[:max_concepts]
+            self._kg_cache[cache_key] = resp
             return resp
         except Exception as e:
             print(f"Error extracting concepts for {topic}: {e}")
-            return KnowledgeGraph(triples=[])
+            empty = KnowledgeGraph(triples=[])
+            self._kg_cache[cache_key] = empty
+            return empty
 
     def get_embedding(self, text: str, model: str = "text-embedding-v4") -> list[float]:
         """
         Get embedding for a given text using Ollama.
         """
+        cache_key = (model, text)
+        if cache_key in self._embedding_cache:
+            return self._embedding_cache[cache_key]
         try:
             # Using the raw OpenAI client from instructor
             response = self.client.embeddings.create(
                 model=model,
                 input=text
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            self._embedding_cache[cache_key] = embedding
+            return embedding
         except Exception as e:
             print(f"Error getting embedding for {text}: {e}")
+            self._embedding_cache[cache_key] = []
             return []
